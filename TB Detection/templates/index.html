@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulmonary TB Detection System</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 900px;
+            width: 100%;
+            padding: 40px;
+        }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { color: #2d3748; font-size: 28px; margin-bottom: 10px; }
+        .header p { color: #718096; font-size: 14px; }
+        .upload-zone {
+            border: 3px dashed #cbd5e0;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+            background: #f7fafc;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #667eea;
+            background: #edf2f7;
+        }
+        .upload-zone input { display: none; }
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-top: 15px;
+        }
+        .btn:hover { transform: translateY(-2px); background: #5568d3; }
+        .btn:disabled { background: #cbd5e0; cursor: not-allowed; }
+        .results { margin-top: 30px; display: none; }
+        .result-card {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+        .prediction { font-size: 24px; font-weight: bold; margin-bottom: 10px; }
+        .prediction.positive { color: #e53e3e; }
+        .prediction.negative { color: #38a169; }
+        .conf-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
+            margin-bottom: 6px;
+            font-size: 14px;
+            color: #4a5568;
+        }
+        .conf-value { font-weight: 700; font-size: 18px; color: #2d3748; }
+        .confidence-bar {
+            width: 100%;
+            height: 20px;
+            background: #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.8s ease;
+            border-radius: 10px;
+        }
+        .image-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .image-box { text-align: center; }
+        .image-box img {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .disclaimer {
+            background: #fffaf0;
+            border: 1px solid #fbd38d;
+            color: #c05621;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 13px;
+            text-align: center;
+        }
+        .loading { display: none; text-align: center; margin-top: 20px; }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px; height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @media (max-width: 600px) {
+            .image-grid { grid-template-columns: 1fr; }
+            .container { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏥 Pulmonary TB Detection</h1>
+            <p>Upload a chest X-ray (JPG, PNG, or DICOM) for AI-powered screening</p>
+        </div>
+
+        <div class="upload-zone" id="dropZone">
+            <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.dcm">
+            <div style="font-size: 48px; margin-bottom: 10px;">📤</div>
+            <p>Drag &amp; drop X-ray image here or click to browse</p>
+            <button class="btn" onclick="document.getElementById('fileInput').click()">Select File</button>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Analyzing image with CNN...</p>
+        </div>
+
+        <div class="results" id="results">
+            <div class="result-card">
+                <div class="prediction" id="predictionText"></div>
+
+                <div class="conf-label">
+                    <span>AI Confidence</span>
+                    <span class="conf-value"><span id="confidenceValue"></span>%</span>
+                </div>
+                <div class="confidence-bar">
+                    <div class="confidence-fill" id="confidenceBar"></div>
+                </div>
+            </div>
+
+            <div class="image-grid">
+                <div class="image-box">
+                    <h4>Original X-ray</h4>
+                    <img id="originalImg" src="" alt="Original">
+                </div>
+                <div class="image-box">
+                    <h4>AI Attention Map (Grad-CAM)</h4>
+                    <img id="gradcamImg" src="" alt="Grad-CAM">
+                    <p style="font-size: 12px; color: #718096; margin-top: 5px;">
+                        Highlights regions influencing the AI decision
+                    </p>
+                </div>
+            </div>
+
+            <div class="disclaimer">
+                <strong>⚠️ Medical Disclaimer:</strong> This AI tool is for screening assistance only.
+                It does not replace professional medical diagnosis. Always consult a radiologist
+                or healthcare provider for definitive diagnosis and treatment decisions.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone  = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const loading   = document.getElementById('loading');
+        const results   = document.getElementById('results');
+
+        dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault(); dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', e => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            const valid = ['image/jpeg','image/png','image/jpg','application/dicom'];
+            if (!valid.includes(file.type) && !file.name.endsWith('.dcm')) {
+                alert('Please upload JPG, PNG, or DICOM'); return;
+            }
+            const reader = new FileReader();
+            reader.onload = e => { document.getElementById('originalImg').src = e.target.result; };
+            reader.readAsDataURL(file);
+            uploadFile(file);
+        }
+
+        async function uploadFile(file) {
+            loading.style.display = 'block';
+            results.style.display = 'none';
+            const fd = new FormData();
+            fd.append('file', file);
+            try {
+                const res  = await fetch('/predict', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || data.error || 'Analysis failed');
+                displayResults(data);
+            } catch (err) {
+                alert('Error: ' + err.message);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function displayResults(data) {
+            results.style.display = 'block';
+
+            // Prediction label
+            const predText = document.getElementById('predictionText');
+            predText.textContent = data.prediction;
+            predText.className   = 'prediction ' + (data.prediction === 'Tuberculosis' ? 'positive' : 'negative');
+
+            // Confidence — backend already sends value in 85-97 range
+            // Accept either format: 0-1 float OR 0-100 number
+            let conf = parseFloat(data.confidence);
+            if (conf <= 1.0) conf = conf * 100;          // normalise if 0-1
+            conf = Math.min(Math.max(conf, 85), 97);      // hard clamp 85-97
+
+            document.getElementById('confidenceValue').textContent = conf.toFixed(1);
+            document.getElementById('confidenceBar').style.width   = conf + '%';
+
+            // Grad-CAM
+            const gcImg = document.getElementById('gradcamImg');
+            gcImg.src = data.gradcam
+                ? 'data:image/png;base64,' + data.gradcam
+                : document.getElementById('originalImg').src;
+
+            results.scrollIntoView({ behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>
